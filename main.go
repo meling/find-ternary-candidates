@@ -14,7 +14,11 @@ import (
 	"path/filepath"
 )
 
-var verbose bool
+var (
+	verboseLiberal      bool
+	verboseConservative bool
+	verboseInit         bool
+)
 
 type Counter struct {
 	IfElseLiberal      int // any if { 1 stmt } else { 1 stmt } — high FP rate
@@ -23,7 +27,9 @@ type Counter struct {
 }
 
 func main() {
-	flag.BoolVar(&verbose, "verbose", false, "print original source for each candidate")
+	flag.BoolVar(&verboseLiberal, "liberal", false, "print original source for if-else-liberal candidates")
+	flag.BoolVar(&verboseConservative, "conservative", false, "print original source for if-else-conservative candidates")
+	flag.BoolVar(&verboseInit, "init", false, "print original source for init-then-if-assign candidates")
 	flag.Parse()
 	if flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "usage: %s <go files or dirs>\n", os.Args[0])
@@ -73,13 +79,14 @@ func findSimpleIfElse(fset *token.FileSet, block *ast.BlockStmt) (liberal, conse
 		}
 
 		pos := fset.Position(ifs.Pos())
+		cons := isConservativeIfElse(ifs)
 		tier := "if-else-liberal"
-		if isConservativeIfElse(ifs) {
+		if cons {
 			conservative++
 			tier = "if-else-conservative"
 		}
 		fmt.Printf("%s:%d:%d %s\n", pos.Filename, pos.Line, pos.Column, tier)
-		if verbose {
+		if cons && verboseConservative || !cons && verboseLiberal {
 			printNode(fset, ifs)
 		}
 		liberal++
@@ -220,7 +227,7 @@ func findInitThenIfAssign(fset *token.FileSet, block *ast.BlockStmt) int {
 			ifpos.Line,
 			ifpos.Column,
 		)
-		if verbose {
+		if verboseInit {
 			printNode(fset, initAssign)
 			printNode(fset, ifs)
 		}
