@@ -18,6 +18,7 @@ var (
 	verboseLiberal      bool
 	verboseConservative bool
 	verboseInit         bool
+	noFlags             bool // true when no pattern flags given; show all without source
 )
 
 type Counter struct {
@@ -27,10 +28,11 @@ type Counter struct {
 }
 
 func main() {
-	flag.BoolVar(&verboseLiberal, "liberal", false, "print original source for if-else-liberal candidates")
-	flag.BoolVar(&verboseConservative, "conservative", false, "print original source for if-else-conservative candidates")
-	flag.BoolVar(&verboseInit, "init", false, "print original source for init-then-if-assign candidates")
+	flag.BoolVar(&verboseLiberal, "liberal", false, "show if-else-liberal candidates with source")
+	flag.BoolVar(&verboseConservative, "conservative", false, "show if-else-conservative candidates with source")
+	flag.BoolVar(&verboseInit, "init", false, "show init-then-if-assign candidates with source")
 	flag.Parse()
+	noFlags = !verboseLiberal && !verboseConservative && !verboseInit
 	if flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "usage: %s <go files or dirs>\n", os.Args[0])
 		os.Exit(2)
@@ -44,7 +46,6 @@ func main() {
 	for _, file := range files {
 		f, err := parser.ParseFile(fset, file, nil, 0)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s: %v\n", file, err)
 			continue
 		}
 
@@ -78,18 +79,25 @@ func findSimpleIfElse(fset *token.FileSet, block *ast.BlockStmt) (liberal, conse
 			continue
 		}
 
-		pos := fset.Position(ifs.Pos())
 		cons := isConservativeIfElse(ifs)
-		tier := "if-else-liberal"
 		if cons {
 			conservative++
+		}
+		liberal++
+
+		if !noFlags && !(cons && verboseConservative) && !(!cons && verboseLiberal) {
+			continue
+		}
+
+		tier := "if-else-liberal"
+		if cons {
 			tier = "if-else-conservative"
 		}
+		pos := fset.Position(ifs.Pos())
 		fmt.Printf("%s:%d:%d %s\n", pos.Filename, pos.Line, pos.Column, tier)
 		if cons && verboseConservative || !cons && verboseLiberal {
 			printNode(fset, ifs)
 		}
-		liberal++
 	}
 	return
 }
@@ -216,6 +224,12 @@ func findInitThenIfAssign(fset *token.FileSet, block *ast.BlockStmt) int {
 			continue
 		}
 
+		count++
+
+		if !noFlags && !verboseInit {
+			continue
+		}
+
 		pos := fset.Position(initAssign.Pos())
 		ifpos := fset.Position(ifs.Pos())
 
@@ -231,8 +245,6 @@ func findInitThenIfAssign(fset *token.FileSet, block *ast.BlockStmt) int {
 			printNode(fset, initAssign)
 			printNode(fset, ifs)
 		}
-
-		count++
 	}
 
 	return count
